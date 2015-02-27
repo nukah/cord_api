@@ -26,7 +26,7 @@ module Components
       location.map { |coord| coord.round(3) }
     end
 
-    def cache_key_part
+    def cache_key
       "#{sharpen.first}_#{sharpen.last}"
     end
   end
