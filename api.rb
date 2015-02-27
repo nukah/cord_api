@@ -29,7 +29,6 @@ class CoordAPI < Sinatra::Base
     position = params["position"].split(',').first(2).map(&:to_f)
     state = (params["active"] == 'true' ? true : false)
 
-    halt(404, json({ error: "Car not found"})) if CARS.find_one(name: name).nil?
     halt(404, json({ error: "Name not provided"})) if name.nil? || name.empty?
     halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
     halt(403, json({ error: "Car with such name already exist!"})) if CARS.find({ name: name }).to_a.any?
