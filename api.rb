@@ -25,14 +25,15 @@ class CoordAPI < Sinatra::Base
   # Initial state: <String> ( "true" ) [true,false]
   ##
   post '/car' do
-    halt(404, json({error: "Name not provided"})) if params["name"] == ""
-
     name = params["name"].slice(0,20)
     position = params["position"].split(',').first(2).map(&:to_f)
     state = (params["active"] == 'true' ? true : false)
 
+    halt(404, json({ error: "Car not found"})) if CARS.find_one(name: name).nil?
+    halt(404, json({ error: "Name not provided"})) if name.nil? || name.empty?
     halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
-    halt(404, json({ error: "Car with such name already exist!"})) if CARS.find({ name: name }).to_a.any?
+    halt(403, json({ error: "Car with such name already exist!"})) if CARS.find({ name: name }).to_a.any?
+
     CARS.insert({ name: name, location: { type: 'Point', coordinates: position.reverse }, active: state})
     json({ car: { name: name, position: position, active: state } })
   end
@@ -46,10 +47,11 @@ class CoordAPI < Sinatra::Base
   # Initial state: <String> ( "false" ) [true,false]
   ##
   put '/car' do
-    halt(404, json({ error: "Name not provided" })) if params["name"] == "" || (/^([\d.,]+)+/ =~ params["position"]).nil?
     name = params["name"]
     position = params["position"].split(',').first(2).map(&:to_f)
 
+    halt(404, json({ error: "Name not provided" })) if name.nil? || name.empty?
+    halt(404, json({ error: "Car not found"})) if CARS.find_one(name: name).nil?
     halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
 
     updates = {}
@@ -75,12 +77,10 @@ class CoordAPI < Sinatra::Base
   ##
   get '/car/arrival' do
     position = params["position"].split(',').map(&:to_f)
+
     halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
-    begin
-      @client = Components::Client.new(position)
-    rescue ArgumentError
-      halt(403, $!.message)
-    end
+
+    client = Components::Client.new(position)
 
     entries = MONGO.command({
       geoNear: 'cars',
@@ -98,13 +98,13 @@ class CoordAPI < Sinatra::Base
       object = obj['obj']
       location = object['location']['coordinates']
       car = Components::Car.new(location.reverse)
-      eta = Components::Cacher.cache("#{car.cache_key}:#{@client.cache_key}", 300) do
-        Components::Estimator.new(@client.lat, @client.long, location.last, location.first).eta
+      eta = Components::Cacher.cache("#{car.cache_key}:#{client.cache_key}", 300) do
+        Components::Estimator.new(client.lat, client.long, location.last, location.first).eta
       end
       eta
     end
     halt(404, json({ error: "Не найдено подходящих автомобилей"})) if results.empty?
     eta = (results.reduce(:+).to_f / results.size).round(1)
-    json({ eta: "Среднее время подачи: #{eta} минут" })
+    json({ eta: "Среднее время подачи: #{eta} минут(а)" })
   end
 end
