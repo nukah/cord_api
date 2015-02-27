@@ -9,13 +9,13 @@ class CoordAPI < Sinatra::Base
       1000    => 2,
       100     => 3
     })
-    set(:db) { MongoClient.new.db('wheely') }
-    set(:cars) { db.collection('cars') }
   end
-  $redis = Redis.new(host:     opts['redis']['host'],
+  REDIS ||= Redis.new(host:     opts['redis']['host'],
                      port:     opts['redis']['port'],
                      db:       opts['redis']['db'])
-  settings.cars.ensureIndex(location: Mongo::GEO2DSPHERE)
+  MONGO ||= MongoClient.new(opts['mongo']['host'], opts['mongo']['port']).db(opts['mongo']['db'])
+  CARS = MONGO.collection('cars')
+  CARS.ensure_index(location: Mongo::GEO2DSPHERE)
 
   ##
   # Parameters:
@@ -25,15 +25,15 @@ class CoordAPI < Sinatra::Base
   # Initial state: <String> ( "true" ) [true,false]
   ##
   post '/car' do
-    halt(404, "Coordinates not provided") if params["position"] == ""
-    halt(404, "Name not provided") if params["name"] == ""
+    halt(404, json({error: "Name not provided"})) if params["name"] == ""
 
     name = params["name"].slice(0,20)
     position = params["position"].split(',').first(2).map(&:to_f)
     state = (params["active"] == 'true' ? true : false)
 
-    halt(404, "Car with such name already exist!") if settings.cars.find({ name: name }).to_a.any?
-    settings.cars.insert({ name: name, location: { type: 'Point', coordinates: position.reverse }, active: state})
+    halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
+    halt(404, json({ error: "Car with such name already exist!"})) if CARS.find({ name: name }).to_a.any?
+    CARS.insert({ name: name, location: { type: 'Point', coordinates: position.reverse }, active: state})
     json({ car: { name: name, position: position, active: state } })
   end
   ##
@@ -46,20 +46,23 @@ class CoordAPI < Sinatra::Base
   # Initial state: <String> ( "false" ) [true,false]
   ##
   put '/car' do
-    halt(404, json({ error: "Name not provided" }) if params["name"] == "" || (/^([\d.,]+)+/ =~ params["position"]).nil?
+    halt(404, json({ error: "Name not provided" })) if params["name"] == "" || (/^([\d.,]+)+/ =~ params["position"]).nil?
     name = params["name"]
+    position = params["position"].split(',').first(2).map(&:to_f)
+
+    halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
 
     updates = {}
     updates["active"] = (params["active"] == 'true' ? true : false) if params["active"]
-    updates["location"] = { type: "Point", coordinates: params["position"].split(',').first(2).map(&:to_f).reverse } if params["position"]
+    updates["location"] = { type: "Point", coordinates: position.reverse } if params["position"]
 
-    settings.cars.update({ name: name }, { "$set" => updates })
+    CARS.update({ name: name }, { "$set" => updates })
 
     json({ success: true })
   end
 
   get '/cars' do
-    results = settings.cars.find({}).to_a.map do |obj|
+    results = CARS.find({}).to_a.map do |obj|
       { name: obj['name'], active: obj['active'], position: obj['location']['coordinates'].reverse }
     end
     json(results)
@@ -71,21 +74,20 @@ class CoordAPI < Sinatra::Base
   # Position: <String> ( "lat,long": "38.898, -77.037")
   ##
   get '/car/arrival' do
-    halt(404, "Coordinates not provided") if params["position"] == "" || (/^([\d.,]+)+/ =~ params["position"]).nil?
     position = params["position"].split(',').map(&:to_f)
-
+    halt(403, json({ error: "Coordinates not provided or malformed" })) unless position.size == 2 && position.all? { |c| c.is_a?(Float) }
     begin
       @client = Components::Client.new(position)
     rescue ArgumentError
       halt(403, $!.message)
     end
 
-    entries = settings.db.command({
+    entries = MONGO.command({
       geoNear: 'cars',
       near: { type: "Point", coordinates: position.reverse },
       spherical: true,
-      maxDistance: 25000,
-      query: { active: true }
+      query: { active: true },
+      limit: 3
     })['results']
 
     accuracy_groups = entries.group_by do |car|
@@ -99,8 +101,10 @@ class CoordAPI < Sinatra::Base
       eta = Components::Cacher.cache("#{car.cache_key}:#{@client.cache_key}", 300) do
         Components::Estimator.new(@client.lat, @client.long, location.last, location.first).eta
       end
-      { name: object['name'], active: object['active'], position: car.location, eta: eta }
+      eta
     end
-    json(results)
+    halt(404, json({ error: "Не найдено подходящих автомобилей"})) if results.empty?
+    eta = (results.reduce(:+).to_f / results.size).round(1)
+    json({ eta: "Среднее время подачи: #{eta} минут" })
   end
 end
