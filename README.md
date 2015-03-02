@@ -33,17 +33,20 @@ ___
 #####Ошибки
 **HTTP Status: 404**
 ```json
-{ error: "Name not provided" }```
+{ error: "Name not provided" }
+```
 В случае если имя не указано
 
 **HTTP Status: 403**
 ```json
-{ error: "Coordinates not provided or malformed" }```
+{ error: "Coordinates not provided or malformed" }
+```
 В случае если координаты указаны неверно
 
 **HTTP Status: 403**
 ```json
-{ error: "Car with such name already exist!" }```
+{ error: "Car with such name already exist!" }
+```
 В случае если автомобиль с данным именем уже существует
 
 ## Обновление данных автомобиля
@@ -63,17 +66,20 @@ ___
 #####Ошибки
 **HTTP Status: 404**
 ```json
-{ error: "Name not provided" }```
+{ error: "Name not provided" }
+```
 В случае если имя не указано
 
 **HTTP Status: 404**
 ```json
-{ error: "Car not found" }```
+{ error: "Car not found" }
+```
 В случае если автомобиль с данным именем не найден
 
 **HTTP Status: 403**
 ```json
-{ error: "Coordinates not provided or malformed" }```
+{ error: "Coordinates not provided or malformed" }
+```
 В случае если координаты указаны неверно
 
 ## Список автомобилей
@@ -99,10 +105,12 @@ ___
 #####Ошибки
 **HTTP Status: 403**
 ```json
-{ error: "Coordinates not provided or malformed" }```
+{ error: "Coordinates not provided or malformed" }
+```
 В случае если координаты указаны неверно
 
 **HTTP Status: 404**
 ```json
-{ error: "Не найдено подходящих автомобилей" }```
+{ error: "Не найдено подходящих автомобилей" }
+```
 В случае если координаты указаны неверно
